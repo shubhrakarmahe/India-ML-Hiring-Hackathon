@@ -640,9 +640,7 @@ aml_final <- h2o.automl(y = 'm13',
                         sort_metric = "logloss",
                         balance_classes = T,
                         seed = 1,
-                       # max_runtime_secs = 0,
-                        nfolds = 10,
-                        stopping_metric = 'logloss')
+                        nfolds = 10)
                         
 # View the AutoML Leaderboard
 lb <- aml_final@leaderboard
@@ -656,7 +654,44 @@ write.csv(cbind(loan_id = test$loan_id,
           'sub_auto.csv',
           row.names = F)
 
-# 0.3246073298 - F1 score at leaderboard
+final_cal_m13_default <- cbind(loan_id = test$loan_id,
+                               test_data,
+                               dataset[which(dataset$is_train == F),'missed_payment'],
+                               as.data.frame(pred_auto_ml_final$predict))
+
+#missed_payment_cases <- final_cal_m13_default[which(final_cal_m13_default$predict == 0 & 
+#                              final_cal_m13_default$missed_payment == 1),]
+
+predict_default_payment_cases <- final_cal_m13_default[which(final_cal_m13_default$predict == 0 & 
+                                                     final_cal_m13_default$m12 == 0 &
+                                                        final_cal_m13_default$missed_payment == 1),]
+
+final_cal_m13_default$m13 <- ifelse(as.integer(final_cal_m13_default$predict) == 2, 1,0)
+
+final_cal_m13_default[which(final_cal_m13_default$predict == 0 & 
+                                                   final_cal_m13_default$m12 != 0 &
+                              final_cal_m13_default$debt_to_income_ratio >= 35),'m13'] <- 1
+
+final_cal_m13_default[which(final_cal_m13_default$predict == 0 & 
+                              final_cal_m13_default$m12 == 0 &
+                              final_cal_m13_default$missed_payment == 1 &
+                              final_cal_m13_default$debt_to_income_ratio >= 44),'m13'] <- 1
+
+final_cal_m13_default[which(final_cal_m13_default$predict == 0 & 
+                              final_cal_m13_default$m12 == 0 &
+                              final_cal_m13_default$missed_payment == 1 &
+                              final_cal_m13_default$borrower_credit_score <= 650),'m13'] <- 1
+
+
+
+
+write.csv(final_cal_m13_default[,c('loan_id','m13')], 
+          'sub_final.csv',
+          row.names = F)
+
+# 0.3348416290 - F1 score at leaderboard
+
+
 
 #-------------------------------Final Model & Conculsion------------------------------
 
@@ -664,9 +699,9 @@ write.csv(cbind(loan_id = test$loan_id,
 # Auto ML of H2O package is used to choose the best model which has least logloss.
 
 # Important predictor variables to determine the m13 (payment default on 13th month)
-# 1. m8 to m12
-# 2. debt_to_income_ratio
-# 3. borrower_credit_score
+# 1. m8 to m12 - previous four months delinquency status will increases the chances for default at 13th month.
+# 2. debt_to_income_ratio is directly proportional to chances of being default
+# 3. as borrower_credit_score decreases the chances of being default at payment increases
 
 
 
