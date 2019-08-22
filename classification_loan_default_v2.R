@@ -176,13 +176,6 @@ ggplot(train, aes(loan_term, fill = m13)) +
   xlab("Loan Term") +
   ylab("Frequency")
 
-# Payment default is high when loan term is near by maximum value
-ggplot(train, aes(loan_term, fill = m13)) + 
-  geom_histogram(color = "black", bins = 30) + 
-  scale_fill_brewer(palette = "Dark2") + 
-  xlab("Loan Term") +
-  ylab("Frequency")
-
 # Payment default is high when loan to value ration is between 70 to 80
 ggplot(train, aes(loan_to_value, fill = m13)) + 
   geom_histogram(color = "black", bins = 30) + 
@@ -507,6 +500,7 @@ dataset$co_borrower_credit_score_avl <- as.factor(dataset$co_borrower_credit_sco
 dataset$insurance_percent_zero <- as.factor(dataset$insurance_percent_zero)
 dataset$First_payment_default <- as.factor(dataset$First_payment_default)
 
+
 #--------------------------PCA for m1 to m12 -----------------------------------------------
 
 pc_m12_1 <- stats::prcomp(dataset[,c('m12','m11','m10', 'm9','m8','m7','m6','m5','m4','m3','m2','m1')])
@@ -537,6 +531,7 @@ summary(train_data$m13)
 
 str(train_data)
 
+?glm
 #------------------------Logistic Regression-----------------------------------------
 
 h2o.init()
@@ -649,24 +644,28 @@ head(lb,nrow(lb)) # Entire leaderboard
 
 pred_auto_ml_final <- h2o.predict(aml_final, as.h2o(test_data))
 
-write.csv(cbind(loan_id = test$loan_id,
-                as.data.frame(pred_auto_ml_final$predict)), 
-          'sub_auto.csv',
-          row.names = F)
+#------------------------------------Submission File creation---------------------------------------------------------
+
+# As per domain knowledege and EDA results, default is more likely to occur when -
+# 1. debt to income ration >= 35
+# 2. borrower credit score <= 650
+# 3. loan to value ratio >= 95
+# 4. past missed payment in the past months
+
+# on the top of model predictions, above assumptions are taken into consideration 
+# to pick more default cases.
+
 
 final_cal_m13_default <- cbind(loan_id = test$loan_id,
                                test_data,
-                               dataset[which(dataset$is_train == F),'missed_payment'],
+                               dataset[which(dataset$is_train == F),
+                                       c('missed_payment','loan_to_value','insurance_percent')],
                                as.data.frame(pred_auto_ml_final$predict))
 
-#missed_payment_cases <- final_cal_m13_default[which(final_cal_m13_default$predict == 0 & 
-#                              final_cal_m13_default$missed_payment == 1),]
-
-predict_default_payment_cases <- final_cal_m13_default[which(final_cal_m13_default$predict == 0 & 
-                                                     final_cal_m13_default$m12 == 0 &
-                                                        final_cal_m13_default$missed_payment == 1),]
 
 final_cal_m13_default$m13 <- ifelse(as.integer(final_cal_m13_default$predict) == 2, 1,0)
+
+
 
 final_cal_m13_default[which(final_cal_m13_default$predict == 0 & 
                                                    final_cal_m13_default$m12 != 0 &
@@ -682,26 +681,28 @@ final_cal_m13_default[which(final_cal_m13_default$predict == 0 &
                               final_cal_m13_default$missed_payment == 1 &
                               final_cal_m13_default$borrower_credit_score <= 650),'m13'] <- 1
 
-
+final_cal_m13_default[which(final_cal_m13_default$predict == 0 & 
+                              final_cal_m13_default$m12 == 0 &
+                              final_cal_m13_default$missed_payment == 1 &
+                              final_cal_m13_default$loan_to_value >= 95),'m13'] <- 1
 
 
 write.csv(final_cal_m13_default[,c('loan_id','m13')], 
           'sub_final.csv',
           row.names = F)
 
-# 0.3348416290 - F1 score at leaderboard
-
-
+# 0.3362831858 - F1 score at leaderboard
 
 #-------------------------------Final Model & Conculsion------------------------------
 
 # Logistic regression performed pretty well as compared to Random Forest, GBM and Naive bayes.
-# Auto ML of H2O package is used to choose the best model which has least logloss.
+# Auto ML of H2O package is used to choose the best model(with least logloss).
+# Final Model selected is "StackedEnsemble_AllModels_AutoML_20190822_095104" (logloss : 0.01935976) 
 
-# Important predictor variables to determine the m13 (payment default on 13th month)
+# Important predictor variables to determine m13 (payment default on 13th month)
 # 1. m8 to m12 - previous four months delinquency status will increases the chances for default at 13th month.
-# 2. debt_to_income_ratio is directly proportional to chances of being default
-# 3. as borrower_credit_score decreases the chances of being default at payment increases
+# 2.debt_to_income_ratio is directly proportional to chances of being default
+# 3.As borrower_credit_score decreases the chances of being default at payment increases.
 
 
 
